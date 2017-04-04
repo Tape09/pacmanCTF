@@ -36,6 +36,7 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
     # self.enemy_idxs = [];
 
     def init(self, gameState, isRed):    
+        self.first_update = True;
         self.enemy_idxs = [];
         if(isRed): # enemy blue
             self.enemy_idxs = gameState.getBlueTeamIndices();
@@ -70,22 +71,31 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
                 for key,value in self.tracker[i].iteritems(): #{
                     if(value == 0.0):
                         continue;
+                    
+                    if(my_index == 0 and self.first_update):
+                        self.first_update = False;    
+                        temp_tracker[key] = value;
+                        continue;
 
-                    p_move = 0;
-                    for direction,_ in Actions._directions.iteritems(): #{
-                        pos = Actions.getSuccessor(key,direction);
-                        #print(pos)
-                        #print(gameState)
-                        if(not gameState.hasWall(int(pos[0]),int(pos[1]))):
-                            p_move += 1;
-                    #}
+                    if((my_index - 1) % gameState.getNumAgents() == i):   #if this agent moved last turn, update his pos             
+                        p_move = 0;
+                        for direction,_ in Actions._directions.iteritems(): #{
+                            pos = Actions.getSuccessor(key,direction);
+                            #print(pos)
+                            #print(gameState)
+                            if(not gameState.hasWall(int(pos[0]),int(pos[1]))):
+                                p_move += 1;
+                        #}
 
-                    p_move = 1.0 / p_move;
+                        p_move = 1.0 / p_move;
 
-                    for direction,_ in Actions._directions.iteritems(): #{
-                        pos = Actions.getSuccessor(key,direction);
-                        if(not gameState.hasWall(int(pos[0]),int(pos[1]))):
-                            temp_tracker[pos] += p_move * value;
+                        for direction,_ in Actions._directions.iteritems(): #{
+                            pos = Actions.getSuccessor(key,direction);
+                            if(not gameState.hasWall(int(pos[0]),int(pos[1]))):
+                                temp_tracker[pos] += p_move * value;
+                        #}
+                    else: #if this agent did not move last turn, pretend he moved using action STOP   
+                        temp_tracker[key] = value;
                     #}
                 #}
                 
@@ -214,7 +224,7 @@ class DummyAgent(CaptureAgent):
     #    print("x = ",myclass.x);
     #    myclass.x += 1;
 
-    time.sleep(0.1)
+    time.sleep(1)
     
     return random.choice(actions)
 
