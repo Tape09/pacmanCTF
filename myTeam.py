@@ -99,6 +99,13 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
         #}
     #}
 
+
+    def update_eaten_agent(self,gameState,index_eaten):
+        self.tracker[index_eaten] = Counter();
+        self.tracker[index_eaten][gameState.getInitialAgentPosition(index_eaten)] = 1.0;
+
+
+
 tracker = EnemyTracker();
 
 
