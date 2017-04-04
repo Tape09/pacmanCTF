@@ -19,6 +19,7 @@ from game import Directions
 from game import Actions
 import game
 from copy import deepcopy
+import numpy as np
 
 
 class asdf(object):
@@ -36,12 +37,15 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
     # self.enemy_idxs = [];
 
     def init(self, gameState, isRed):    
+        self.red = isRed;
         self.first_update = True;
         self.enemy_idxs = [];
         if(isRed): # enemy blue
             self.enemy_idxs = gameState.getBlueTeamIndices();
+            self.old_food_state = gameState.getRedFood();
         else:
             self.enemy_idxs = gameState.getRedTeamIndices();
+            self.old_food_state = gameState.getBlueFood();
 
         
         
@@ -49,6 +53,9 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
         all_idxs.extend(gameState.getBlueTeamIndices());
         all_idxs.sort();
         self.tracker = [None]*len(all_idxs);
+        
+
+        
 
         #print(gameState)
         for i in all_idxs:
@@ -60,6 +67,27 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
 
 
     def update(self,gameState,my_index): #{
+        #check if food got eaten
+        if(self.red): # enemy blue
+            new_food_state = gameState.getRedFood();
+        else:
+            new_food_state = gameState.getBlueFood();
+        
+        eaten_food = None;
+        broken = False;
+
+        for i in range(self.old_food_state.width):
+            for j in range(self.old_food_state.height):
+                if self.old_food_state[i][j] and not new_food_state[i][j]:
+                    eaten_food = (i,j);                        
+                    broken = True;
+                    break;
+            if(broken):
+                break;
+    
+
+        self.old_food_state = new_food_state;
+
         measured_dists = gameState.getAgentDistances();
         for i in self.enemy_idxs: #{
             exact_pos = gameState.getAgentPosition(i);
@@ -81,8 +109,6 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
                         p_move = 0;
                         for direction,_ in Actions._directions.iteritems(): #{
                             pos = Actions.getSuccessor(key,direction);
-                            #print(pos)
-                            #print(gameState)
                             if(not gameState.hasWall(int(pos[0]),int(pos[1]))):
                                 p_move += 1;
                         #}
@@ -102,6 +128,8 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
                 for key,value in temp_tracker.iteritems(): #{
                     true_dist = manhattanDistance(key,gameState.getAgentPosition(my_index));
                     temp_tracker[key] = value * gameState.getDistanceProb(true_dist, measured_dists[i]);
+                    if(key == eaten_food):
+                        temp_tracker[key] = 1;
                 #}
                 self.tracker[i] = deepcopy(temp_tracker);
                 self.tracker[i].normalize();
@@ -224,7 +252,8 @@ class DummyAgent(CaptureAgent):
     #    print("x = ",myclass.x);
     #    myclass.x += 1;
 
-    time.sleep(1)
+    #print(gameState)
+    time.sleep(0.01)
     
     return random.choice(actions)
 
