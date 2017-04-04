@@ -55,15 +55,10 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
         self.tracker = [None]*len(all_idxs);
         
 
-        
-
-        #print(gameState)
         for i in all_idxs:
             if(i in self.enemy_idxs):                   
                 self.tracker[i] = Counter();
-                self.tracker[i][gameState.getInitialAgentPosition(i)] = 1.0;
-                #print(gameState.getInitialAgentPosition(i));
-            
+                self.tracker[i][gameState.getInitialAgentPosition(i)] = 1.0;  
 
 
     def update(self,gameState,my_index): #{
@@ -73,17 +68,13 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
         else:
             new_food_state = gameState.getBlueFood();
         
-        eaten_food = None;
-        broken = False;
+        eaten_food = [];
 
         for i in range(self.old_food_state.width):
             for j in range(self.old_food_state.height):
                 if self.old_food_state[i][j] and not new_food_state[i][j]:
-                    eaten_food = (i,j);                        
-                    broken = True;
-                    break;
-            if(broken):
-                break;
+                    eaten_food.append((i,j)); 
+
     
 
         self.old_food_state = new_food_state;
@@ -128,7 +119,7 @@ class EnemyTracker: ########################## TODO: Update positions of eaten a
                 for key,value in temp_tracker.iteritems(): #{
                     true_dist = manhattanDistance(key,gameState.getAgentPosition(my_index));
                     temp_tracker[key] = value * gameState.getDistanceProb(true_dist, measured_dists[i]);
-                    if(key == eaten_food):
+                    if(key in eaten_food):
                         temp_tracker[key] = 1;
                 #}
                 self.tracker[i] = deepcopy(temp_tracker);
