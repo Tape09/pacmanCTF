@@ -22,16 +22,39 @@ from copy import deepcopy
 import numpy as np
 
 
-class asdf(object):
-    # int for storing number of moves
-    #self.x = 0;
+class MCTS:
+    def __init__(self, isRed):
+        self.states_played = {};
+        self.states_won = {};
+        self.red = isRed;
+        self.exploration_c = 2.0;
+        self.time_limit = 0.9;
+
+        
+    def next_move(self, gameState):
+        # find whos turn it is
+        turn = (gameState.data._agentMoved + 1) % gameState.getNumAgents();       
+
+        # get legal moves  
+        moves = gameState.getLegalActions(turn);
+
+        # if trivial (this should never happen)
+        if(len(moves) == 0):
+            return None;
+        elif(len(moves) == 1):
+            return moves[0];
+
+        t0 = time.time();
+        while (time.time() - t0 < self.time_limit):
+            simulate();
+
+        
+
+    def simulate(self):
+        return None;
+
     
-    def __init__(self, i):
-        self.x = i;
-
-myclass = asdf(0);
-
-class EnemyTracker: ########################## TODO: Update positions of eaten agents to starting position
+class EnemyTracker: ######### TODO: Keep track of eaten food, and assign it to most likely agent
     # counter object for keeping track of enemy positions
     # self.tracker : dict of counters
     # self.enemy_idxs = [];
@@ -200,8 +223,21 @@ class DummyAgent(CaptureAgent):
     tracker.init(gameState,self.red);
 	
 
-	
-	
+
+    #state = gameState;
+    #turn = 0;
+    #t0 = time.time()
+    #while True:
+    #    actions = state.getLegalActions(turn);
+    #    state = state.generateSuccessor(turn,np.random.choice(actions));
+    #    turn = (turn + 1) % 4;
+
+    #    if state.isOver() or state.data.timeleft == 0:
+    #        break;
+
+    #t1 = time.time()        	
+    #print("time taken: ", t1-t0);
+
 
   def chooseAction(self, gameState):
     """
