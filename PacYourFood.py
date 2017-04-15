@@ -197,11 +197,11 @@ def less_shit_heuristic(next_actions_states):
     #print(best_action)
     #print("")
 
-    for key, _ in best_weights.iteritems():
-        if(key in best_features):
-            print(key, best_weights[key] * best_features[key]);
+    #for key, _ in best_weights.iteritems():
+    #    if(key in best_features):
+    #        print(key, best_weights[key] * best_features[key]);
 
-    print("");
+    #print("");
     return (best_action,best_state);
 
 def minimax_heuristic_0(s):
@@ -252,11 +252,27 @@ def minimax_heuristic_0(s):
 
     return weights * mod_features;
 
+def minimax_heuristic_retard(s):
+    weights = Counter();   
+    features = extract_features(s);
+    mod_features = deepcopy(features);
+
+     # enemy 0
+    weights['distToEnemy0'] = -1;
+
+    # enemy 1
+    weights['distToEnemy1'] = -1;
+
+
+    return weights * mod_features;
+
 def minimax_heuristic_simple(s):
     weights = Counter();   
     features = extract_features(s);
     mod_features = deepcopy(features);
 
+    
+    
     # carrying food weight
     #mod_features['carryingFood'] = np.log(1 + features['carryingFood']);
     weights['carryingFood'] = 1.5;
@@ -286,6 +302,8 @@ def minimax_heuristic_simple(s):
     weights['teamScared'] = -1000;
 
     return weights * mod_features;
+
+
 
 
 class MCTS:
@@ -607,6 +625,8 @@ class DummyAgent(CaptureAgent):
   create an agent as this is the bare minimum.
   """
 
+    
+
   def registerInitialState(self, gameState):
     t0 = time.time();
     """
@@ -643,9 +663,11 @@ class DummyAgent(CaptureAgent):
     self.first = False;    
 
     if(self.red): # enemy blue
+        self.our_idxs = gameState.getRedTeamIndices();
         self.enemy_idxs = gameState.getBlueTeamIndices();
         self.enemy_edge = gameState.data.layout.width / 2;
     else:
+        self.our_idxs = gameState.getBlueTeamIndices();
         self.enemy_idxs = gameState.getRedTeamIndices();
         self.enemy_edge = gameState.data.layout.width / 2 - 1;
 
@@ -737,8 +759,24 @@ class DummyAgent(CaptureAgent):
     #print(gameState)
     actions_states = [(a,gameState.generateSuccessor(my_index,a)) for a in actions]; 
 
+    
+
     #my_action = oracle.next_move(gameState);
     my_action, _ = less_shit_heuristic(actions_states);
+
+    bestscore = -10000000
+    for action, state in actions_states:
+       alpha = -100000
+       beta = 100000
+       depth = 5
+       score = self.alphaBeta(state,depth,alpha,beta)
+       if score>bestscore:
+           bestscore = score;
+           my_action = action
+       #print ("score",score,"action",action);
+
+    print my_action
+
     if(Actions.getSuccessor(my_pos,my_action) == enemy0_pos):
         tracker.update_eaten_agent(gameState,self.enemy_idxs[0]);
     if(Actions.getSuccessor(my_pos,my_action) == enemy1_pos):
@@ -747,6 +785,47 @@ class DummyAgent(CaptureAgent):
         shared.pill_time = 40;
 
     return my_action;
+
+  def alphaBeta(self, gameState, depth,alpha,beta):
+    #alpha is the best choice for max, beta is the best choice for min
+    agentIndex = (gameState.data._agentMoved + 1) % 4;  
+
+    actionStates = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)]
+    if depth<=0:
+        return minimax_heuristic_0(gameState)
+
+    if gameState.isOver() or gameState.data.timeleft == 0:#game over,terminal state
+        finalScore = gameState.getScore()
+        if self.red:
+            return 100000*finalScore
+        else:
+            return -100000*finalScore
+    else:# game is not over!
+        # actionStates = [(a,gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)]
+        # score = less_shit_heuristic(actionStates)
+        if gameState.data._agentMoved in self.our_idxs:#if it is in our team, need to change the condition
+            best = -1000000000
+            for action,nextState in actionStates:
+                evaluation = self.alphaBeta(nextState,depth-1,alpha,beta)
+                #print('MyTeam Best: {} Eval: {}'.format(best,evaluation))
+                if eval>best:
+                    best = evaluation
+                if best > alpha:
+                    alpha = best
+                if beta <= alpha:
+                    break#beta prune
+        else:
+            best = 1000000000
+            for action, nextState in actionStates:
+                evaluation = self.alphaBeta(nextState, depth - 1, alpha, beta)
+                #print('Enemy Best: {} Eval: {}'.format(best, evaluation))
+                if eval < best:
+                    best = evaluation
+                if best < beta:
+                    beta = best
+                if beta <= alpha:
+                    break  # alpha prune
+        return best
 
 
 
