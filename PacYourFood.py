@@ -84,7 +84,6 @@ def extract_features(gameState):
     features['score'] = score;
 
     # dist to home
-
     distHome = 9999;
     distHomeEnemy0 = 9999;
     distHomeEnemy1 = 9999;
@@ -149,7 +148,19 @@ def less_shit_heuristic(next_actions_states):
         if(features['teamScared'] == 1):
             weights['nearestEnemyPac'] = 10;      
         else:
-            weights['nearestEnemyPac'] = -10;
+            weights['nearestEnemyPac'] = -1;
+
+        # enemy 0
+        weights['distToEnemy0'] = -1 * features['carryingFoodEnemy0']
+        mod_features['distHomeEnemy0'] = 1.0 / (1 + features['distHomeEnemy0']);
+        weights['distHomeEnemy0'] = features['carryingFoodEnemy0'] * -1;
+
+        # enemy 1
+        weights['distToEnemy1'] = -1 * features['carryingFoodEnemy1']
+        mod_features['distHomeEnemy1'] = 1.0 / (1 + features['distHomeEnemy1']);
+        weights['distHomeEnemy1'] = features['carryingFoodEnemy1'] * -1;
+
+
    
         weights['nEnemyPacs'] = -10000;
         
@@ -158,6 +169,11 @@ def less_shit_heuristic(next_actions_states):
         else:
             mod_features['nearestEnemyGhost'] = 1.0 / (1 + features['nearestEnemyGhost'] ** 2);
             weights['nearestEnemyGhost'] = -32;
+
+
+        mod_features['distToTeam'] = 1.0 / (1 + mod_features['distToTeam']);
+        weights['distToTeam'] = -1;
+            
 
         weights['score'] = 100;
         weights['distHome'] = -0.005 * features['carryingFood'] ** 2;
@@ -180,7 +196,61 @@ def less_shit_heuristic(next_actions_states):
     #print(best_weights)
     #print(best_action)
     #print("")
+
+    for key, _ in best_weights.iteritems():
+        if(key in best_features):
+            print(key, best_weights[key] * best_features[key]);
+
+    print("");
     return (best_action,best_state);
+
+def minimax_heuristic_0(s):
+    weights = Counter();   
+    features = extract_features(s);
+    mod_features = deepcopy(features);
+
+    # carrying food weight
+    #mod_features['carryingFood'] = np.log(1 + features['carryingFood']);
+    weights['carryingFood'] = 1.5;
+
+    # nearest food
+    weights['nearestFoodDist'] = -0.156;
+
+    # enemy pac
+    if(features['teamScared'] == 1):
+        weights['nearestEnemyPac'] = 10;      
+    else:
+        weights['nearestEnemyPac'] = -0.5;
+
+    # enemy 0
+    weights['distToEnemy0'] = -1 * features['carryingFoodEnemy0']
+    mod_features['distHomeEnemy0'] = 1.0 / (1 + features['distHomeEnemy0']);
+    weights['distHomeEnemy0'] = features['carryingFoodEnemy0'] * -1;
+
+    # enemy 1
+    weights['distToEnemy1'] = -1 * features['carryingFoodEnemy1']
+    mod_features['distHomeEnemy1'] = 1.0 / (1 + features['distHomeEnemy1']);
+    weights['distHomeEnemy1'] = features['carryingFoodEnemy1'] * -1;
+   
+    weights['nEnemyPacs'] = -10000;
+        
+    if(features['enemyScared'] == 1):
+        weights['nearestEnemyGhost'] = 0;
+    else:
+        mod_features['nearestEnemyGhost'] = 1.0 / (1 + features['nearestEnemyGhost'] ** 2);
+        weights['nearestEnemyGhost'] = -32;
+
+
+    mod_features['distToTeam'] = 1.0 / (1 + mod_features['distToTeam']);
+    weights['distToTeam'] = -1;
+            
+
+    weights['score'] = 100;
+    weights['distHome'] = -0.005 * features['carryingFood'] ** 2;
+    weights['enemyScared'] = 1000;
+    weights['teamScared'] = -1000;
+
+    return weights * mod_features;
 
 class MCTS:
     def __init__(self, heuristicFcn = less_shit_heuristic):
@@ -436,7 +506,7 @@ class EnemyTracker:
                     if(key[0] not in self.enemy_edge):
                         self.tracker[self.enemy_idxs[1]][key] = 0.0;
                    
-                for key, _ in trackers.iteritems():
+                for key, _ in temp_trackers.iteritems():
                     self.tracker[key].normalize();
     #}
 
