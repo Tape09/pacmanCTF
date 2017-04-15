@@ -252,6 +252,42 @@ def minimax_heuristic_0(s):
 
     return weights * mod_features;
 
+def minimax_heuristic_simple(s):
+    weights = Counter();   
+    features = extract_features(s);
+    mod_features = deepcopy(features);
+
+    # carrying food weight
+    #mod_features['carryingFood'] = np.log(1 + features['carryingFood']);
+    weights['carryingFood'] = 1.5;
+
+    # nearest food
+    weights['nearestFoodDist'] = -0.156;
+
+    # enemy pac
+    if(features['teamScared'] == 1):
+        weights['nearestEnemyPac'] = 10;      
+    else:
+        weights['nearestEnemyPac'] = -0.5;
+
+   
+    weights['nEnemyPacs'] = -10000;
+        
+    if(features['enemyScared'] == 1):
+        weights['nearestEnemyGhost'] = 0;
+    else:
+        mod_features['nearestEnemyGhost'] = 1.0 / (1 + features['nearestEnemyGhost'] ** 2);
+        weights['nearestEnemyGhost'] = -32;
+            
+
+    weights['score'] = 100;
+    weights['distHome'] = -0.005 * features['carryingFood'] ** 2;
+    weights['enemyScared'] = 1000;
+    weights['teamScared'] = -1000;
+
+    return weights * mod_features;
+
+
 class MCTS:
     def __init__(self, heuristicFcn = less_shit_heuristic):
         self.states_played = {};
