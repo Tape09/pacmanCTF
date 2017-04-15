@@ -190,7 +190,7 @@ class MCTS:
         return action;
 
 
-    def simulate(self, gameState):
+    def simulate(self, gameState): # something is fucked
         visited_states = set();        
         expand = True;
         redWin = None;
@@ -525,7 +525,7 @@ class DummyAgent(CaptureAgent):
         isPacman0 = enemy0_pos[0] < gameState.data.layout.width/2;
         isPacman1 = enemy1_pos[0] < gameState.data.layout.width/2;
     else:
-        isPacman = enemy0_pos[0] >= gameState.data.layout.width/2;
+        isPacman0 = enemy0_pos[0] >= gameState.data.layout.width/2;
         isPacman1 = enemy1_pos[0] >= gameState.data.layout.width/2;
     e0_state = AgentState(e0_config,isPacman0);
     e1_state = AgentState(e1_config,isPacman1);
@@ -584,7 +584,7 @@ class DummyAgent(CaptureAgent):
         isPacman0 = enemy0_pos[0] < gameState.data.layout.width/2;
         isPacman1 = enemy1_pos[0] < gameState.data.layout.width/2;
     else:
-        isPacman = enemy0_pos[0] >= gameState.data.layout.width/2;
+        isPacman0 = enemy0_pos[0] >= gameState.data.layout.width/2;
         isPacman1 = enemy1_pos[0] >= gameState.data.layout.width/2;
     e0_state = AgentState(e0_config,isPacman0);
     e1_state = AgentState(e1_config,isPacman1);

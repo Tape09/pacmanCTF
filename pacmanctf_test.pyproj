@@ -15,7 +15,7 @@
     <InterpreterId>{82f0fdcf-a20a-4064-81e4-13e795791773}</InterpreterId>
     <InterpreterVersion>2.7</InterpreterVersion>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
-    <CommandLineArguments>-r myTeam -l jumboCapture</CommandLineArguments>
+    <CommandLineArguments>-r PacYourFood -l jumboCapture</CommandLineArguments>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
@@ -48,6 +48,7 @@
     <Compile Include="myTeam.py" />
     <Compile Include="pacman.py" />
     <Compile Include="pacmanAgents.py" />
+    <Compile Include="PacYourFood.py" />
     <Compile Include="testClasses.py" />
     <Compile Include="testParser.py" />
     <Compile Include="textDisplay.py" />
