@@ -26,6 +26,8 @@ def extract_features(gameState):
     my_idx = gameState.data._agentMoved;  
     isRed = gameState.isOnRedTeam(my_idx);
     my_pos = gameState.getAgentState(my_idx).getPosition();
+    team_idx = (my_idx + 2) % 4;
+    team_pos = gameState.getAgentState(team_idx).getPosition();
 
     if(isRed):
         home_x = gameState.data.layout.width / 2 - 1;
@@ -43,28 +45,37 @@ def extract_features(gameState):
     nearestFoodDist = min([global_distancer.getDistance(my_pos, food) for food in foodList]);
     features['nearestFoodDist'] = nearestFoodDist;    
 
-    # dist to nearest enemy pacman, and number of enemy pacmen
-    nearestEnemyPac = 9999;
-    nEnemyPacs = 0;
-    for idx in enemy_idxs:        
-        if(gameState.data.agentStates[idx].isPacman):
-            nEnemyPacs += 1;
-            nearestEnemyPac = min(nearestEnemyPac,global_distancer.getDistance(my_pos, gameState.getAgentState(idx).getPosition()));
-    if(nearestEnemyPac != 9999):
-        features['nearestEnemyPac'] = nearestEnemyPac;
-    features['nEnemyPacs'] = nEnemyPacs;
-    
+    # dist to team mate
+    features['distToTeam'] = global_distancer.getDistance(my_pos, team_pos);
 
-    # dist to nearest enemy ghost, and #
+    # dist to nearest enemies, pacmen, ghosts, carrying, and #
     nearestEnemyGhost = 9999;   
+    nearestEnemyPac = 9999;
     nEnemyGhosts = 0;
-    for idx in enemy_idxs:        
+    nEnemyPacs = 0;
+    for c,idx in enumerate(enemy_idxs):
+        s = 'distToEnemy' + str(c);
+        ss = 'isPacEnemy' + str(c);
+        sss = 'carryingFoodEnemy' + str(c);
+        dist = global_distancer.getDistance(my_pos, gameState.getAgentState(idx).getPosition());
+        features[s] = dist;
+        features[sss] = gameState.getAgentState(idx).numCarrying;
         if(not gameState.data.agentStates[idx].isPacman):
+            features[ss] = 0;
             nEnemyGhosts += 1;
-            nearestEnemyGhost = min(nearestEnemyGhost,global_distancer.getDistance(my_pos, gameState.getAgentState(idx).getPosition()));            
+            nearestEnemyGhost = min(nearestEnemyGhost,dist);     
+        else:
+            features[ss] = 1;
+            nEnemyPacs += 1;
+            nearestEnemyPac = min(nearestEnemyPac,dist);    
+
     if(nearestEnemyGhost != 9999):
         features['nearestEnemyGhost'] = nearestEnemyGhost;
     features['nEnemyGhosts'] = nEnemyGhosts;
+
+    if(nearestEnemyPac != 9999):
+        features['nearestEnemyPac'] = nearestEnemyPac;
+    features['nEnemyPacs'] = nEnemyPacs;
 
     # score
     score = gameState.getScore();
@@ -73,15 +84,30 @@ def extract_features(gameState):
     features['score'] = score;
 
     # dist to home
-    if(gameState.data.agentStates[my_idx].isPacman):
-        distHome = 9999;
-        map_height = gameState.data.layout.height;
-        for y in range(map_height):
-            pos = (home_x, y);
-            if(gameState.hasWall(pos[0],pos[1])):
-                continue;
+
+    distHome = 9999;
+    distHomeEnemy0 = 9999;
+    distHomeEnemy1 = 9999;
+    map_height = gameState.data.layout.height;
+    for y in range(map_height):
+        pos = (home_x, y);
+        if(gameState.hasWall(pos[0],pos[1])):
+            continue;
+        if(gameState.data.agentStates[my_idx].isPacman):
             distHome = min(distHome, global_distancer.getDistance(my_pos, pos));
+        if(gameState.data.agentStates[enemy_idxs[0]].isPacman):
+            distHomeEnemy0 = min(distHomeEnemy0, global_distancer.getDistance(gameState.getAgentState(enemy_idxs[0]).getPosition(), pos) + 1);
+        if(gameState.data.agentStates[enemy_idxs[1]].isPacman):
+            distHomeEnemy1 = min(distHomeEnemy1, global_distancer.getDistance(gameState.getAgentState(enemy_idxs[1]).getPosition(), pos) + 1);
+    
+    if(distHome != 9999):
         features['distHome'] = distHome;
+
+    if(distHomeEnemy0 != 9999):
+        features['distHomeEnemy0'] = distHomeEnemy0;
+
+    if(distHomeEnemy1 != 9999):
+        features['distHomeEnemy1'] = distHomeEnemy1;
 
     # Enemy scared
     enemyScared = 0;
@@ -185,8 +211,8 @@ class MCTS:
 
         actions_states = [(a,gameState.generateSuccessor(turn,a)) for a in actions];    
         win_chance, action = max((self.states_won.get(s, 0) / self.states_played.get(s, 1), a) for a, s in actions_states);
-
-        print(action)
+        print(len(self.states_played))
+        print(action,win_chance)
         return action;
 
 
@@ -213,6 +239,7 @@ class MCTS:
                 value, my_action, state = max(((states_won[s] / states_played[s]) + self.exploration_c * np.sqrt(log_total / states_played[s]), a, s) for a, s in next_actions_states); # UCB1
             else:
                 my_action, state = self.heuristicFcn(next_actions_states); # use some heuristic here
+                #print(my_action);
                 #my_action, state = np.random.choice(next_actions_states); # use some heuristic here
 
 
@@ -228,6 +255,7 @@ class MCTS:
                     redWin = True;
                 elif(state.getScore() < 0):
                     redWin = False;
+                print(redWin);
                 break;
 
         for s in visited_states:
@@ -434,6 +462,7 @@ tracker = EnemyTracker();
 class SharedMemory:
     def __init__(self):
         self.pill_time = 0;
+        self.red = False;
         
 shared = SharedMemory();
 
@@ -543,7 +572,8 @@ class DummyAgent(CaptureAgent):
 
     #oracle.next_move(gameState);
     oracle.time_limit = 0.95;
-
+    
+    shared.red = self.red;
 
 
 
