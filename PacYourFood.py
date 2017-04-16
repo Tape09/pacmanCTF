@@ -22,6 +22,17 @@ from operator import itemgetter
 
 #global_distancer = None;
 
+
+def fix_state(gameState):
+    for i in gameState.getRedTeamIndices():
+        gameState.data.agentStates[i].isPacman = gameState.data.agentStates[i].getPosition() >= gameState.data.layout.width / 2;
+
+    for i in gameState.getBlueTeamIndices():
+        gameState.data.agentStates[i].isPacman = gameState.data.agentStates[i].getPosition() < gameState.data.layout.width / 2;
+
+def checkEqualIvo(lst):
+    return not lst or lst.count(lst[0]) == len(lst)
+
 def extract_features(gameState):
     features = Counter();
     my_idx = gameState.data._agentMoved;  
@@ -168,6 +179,9 @@ def team_heuristic(gameState, red):
     my_dist_home = [9999,9999];
     enemy_dist_home = [9999,9999];
 
+    my_nearest_home = [0,0];    
+    enemy_nearest_home = [0,0];    
+
     for y in range(map_height):
         hpos = (home_x, y);
         if(gameState.hasWall(hpos[0],hpos[1])):
@@ -177,14 +191,19 @@ def team_heuristic(gameState, red):
             if(my_pac[i]):
                 my_dist_home[i] = 0;
             else:
-                my_dist_home[i] = min(my_dist_home[i], global_distancer.getDistance(pos,hpos));
+                dist = global_distancer.getDistance(pos,hpos);
+                if(dist < my_dist_home[i]):
+                    my_dist_home[i] = dist;
+                    my_nearest_home = hpos;
 
         for i,pos in enumerate(enemy_pos):
             if(enemy_pac[i]):
                 enemy_dist_home[i] = 0;
             else:
-                enemy_dist_home[i] = min(my_dist_home[i], global_distancer.getDistance(pos,hpos) + 1);
-
+                dist = global_distancer.getDistance(pos,hpos) + 1;
+                if(dist < enemy_dist_home[i]):
+                    enemy_dist_home[i] = dist;
+                    enemy_nearest_home = hpos;
 
 
     return -np.sum(np.min(ma_ef_dists,axis=1)) + 2*np.sum(my_carrying);
@@ -323,59 +342,7 @@ def minimax_heuristic_0(s):
 
     return weights * mod_features;
 
-def minimax_heuristic_retard(s):
-    weights = Counter();   
-    features = extract_features(s);
-    mod_features = deepcopy(features);
 
-     # enemy 0
-    weights['distToEnemy0'] = -1;
-
-    # enemy 1
-    weights['distToEnemy1'] = -1;
-
-    #for key, _ in weights.iteritems():
-    #    if(key in mod_features):
-    #        print(key,weights[key] * mod_features[key]);
-
-    return weights * mod_features;
-
-def minimax_heuristic_simple(s):
-    weights = Counter();   
-    features = extract_features(s);
-    mod_features = deepcopy(features);
-
-    
-    
-    # carrying food weight
-    #mod_features['carryingFood'] = np.log(1 + features['carryingFood']);
-    weights['carryingFood'] = 1.5;
-
-    # nearest food
-    weights['nearestFoodDist'] = -0.156;
-
-    # enemy pac
-    if(features['teamScared'] == 1):
-        weights['nearestEnemyPac'] = 10;      
-    else:
-        weights['nearestEnemyPac'] = -0.5;
-
-   
-    weights['nEnemyPacs'] = -10000;
-        
-    if(features['enemyScared'] == 1):
-        weights['nearestEnemyGhost'] = 0;
-    else:
-        mod_features['nearestEnemyGhost'] = 1.0 / (1 + features['nearestEnemyGhost'] ** 2);
-        weights['nearestEnemyGhost'] = -32;
-            
-
-    weights['score'] = 100;
-    weights['distHome'] = -0.005 * features['carryingFood'] ** 2;
-    weights['enemyScared'] = 1000;
-    weights['teamScared'] = -1000;
-
-    return weights * mod_features;
 
 
 
@@ -661,6 +628,10 @@ class SharedMemory:
     def __init__(self):
         self.pill_time = 0;
         self.red = False;
+        self.transposition_table = {};
+
+        self.w_nearest_food = 0.15;
+        self.w_carrying = 2.0;
         
 shared = SharedMemory();
 
@@ -777,17 +748,18 @@ class DummyAgent(CaptureAgent):
     
     shared.red = self.red;
 
-
-
   def chooseAction(self, gameState):
     """
     Picks among actions randomly.
     """
-    actions = gameState.getLegalActions(self.index)
+    #actions = gameState.getLegalActions(self.index)
 
     '''
     You should change this in your own agent.
     '''
+    t0 = time.time();
+    deadline = t0 + 0.99;
+
 
     shared.pill_time = max(0, shared.pill_time - 2);
     #if(self.first and self.index == 0):        
@@ -827,25 +799,19 @@ class DummyAgent(CaptureAgent):
 
     gameState.data.agentStates[self.enemy_idxs[0]] = e0_state;
     gameState.data.agentStates[self.enemy_idxs[1]] = e1_state;
-    gameState.data._agentMoved = (my_index - 1) % gameState.getNumAgents(); 
 
+    fix_state(gameState);
 
-    #print(gameState)
-    actions_states = [(a,gameState.generateSuccessor(my_index,a)) for a in actions]; 
-
-    actions_rewards = [(a,symmetric_heuristic(s,self.red)) for a,s in actions_states];
-
-    #print(actions_rewards)
-
-    #my_action = max(actions_rewards,key=itemgetter(1))[0];
-    #my_action = oracle.next_move(gameState);
-    #my_action, _ = less_shit_heuristic(actions_states);
+    gameState.data._agentMoved = (my_index - 1) % gameState.getNumAgents();     
     
-    
-    my_action = self.alphaBetaStart(gameState,4);
-    #print(symmetric_heuristic(gameState,self.red))
+    d = 3;
+    while time.time() < deadline:
+        _,action = self.alphaBeta(gameState,0,d,-10000000,10000000,deadline);     
+        if(action != None):
+            my_action = action;
+        d += 1;
 
-    print my_action
+    print my_action,d
 
     if(Actions.getSuccessor(my_pos,my_action) == enemy0_pos):
         tracker.update_eaten_agent(gameState,self.enemy_idxs[0]);
@@ -854,29 +820,23 @@ class DummyAgent(CaptureAgent):
     if(Actions.getSuccessor(my_pos,my_action) in self.getCapsules(gameState)):
         shared.pill_time = 40;
 
+    t1 = time.time();
+    print("time taken:", t1-t0);
+
     return my_action;
 
-  def alphaBetaStart(self,gameState,depth):
-    actions = gameState.getLegalActions(self.index)
-    actions_states = [(a,gameState.generateSuccessor(self.index,a)) for a in actions]; 
 
-    bestscore = -10000000
-    for a, s in actions_states:
-       alpha = -1000000
-       beta =   1000000
-       score = self.alphaBeta(s,depth,alpha,beta)
-       print(a,score)
-       if score>bestscore:
-            bestscore = score;
-            my_action = a;
+  def alphaBeta(self, gameState, depth, maxDepth, alpha,beta, deadline):
+    tnow = time.time();
+    if(tnow >= deadline):
+        return None,None;
 
-   
-    return my_action;
-
-  def alphaBeta(self, gameState, depth,alpha,beta):
+    fix_state(gameState);
     #alpha is the best choice for max, beta is the best choice for min
     agentIndex = (gameState.data._agentMoved + 1) % 4; 
+    nextAgentIndex = (gameState.data._agentMoved + 2) % 4; 
     agentRed = gameState.isOnRedTeam(agentIndex);
+    depthRemaining = maxDepth - depth;
     
     if gameState.isOver() or gameState.data.timeleft == 0:#game over,terminal state
         finalScore = gameState.getScore()
@@ -885,16 +845,37 @@ class DummyAgent(CaptureAgent):
         else:
             return -100000*finalScore
 
-    if depth <= 0:
+    if depth >= maxDepth:
         return symmetric_heuristic(gameState,self.red), None;
 
-    actions_states = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)]    
+    if((gameState,agentIndex) in shared.transposition_table):
+        (p_action, p_v, p_action_depthRemaining) = shared.transposition_table[(gameState,agentIndex)];
+        if(p_action_depthRemaining >= depthRemaining):
+            actions_states = [(p_action, gameState.generateSuccessor(agentIndex, p_action))];
+        else:
+            actions_states = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)];
+            estimated_values = [np.random.uniform(-999999,-888888) if (s,nextAgentIndex) not in shared.transposition_table else shared.transposition_table[(s,nextAgentIndex)][1] for a,s in actions_states];            
+            actions_states = [x for (y,x) in sorted(zip(estimated_values,actions_states))]
+           
 
+            p_i = 0;
+            for i, a_s in enumerate(actions_states):
+                if(a_s[0] == p_action):
+                    p_i = i;
+        
+            actions_states[0], actions_states[p_i] = actions_states[p_i], actions_states[0];        
+    else:
+
+        actions_states = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)];
+        estimated_values = [np.random.uniform(-999999,-888888) if (s,nextAgentIndex) not in shared.transposition_table else shared.transposition_table[(s,nextAgentIndex)][1] for a,s in actions_states];            
+        actions_states = [x for (y,x) in sorted(zip(estimated_values,actions_states))]
 
     if(agentRed == self.red):
         v = -1000000000
         for a,s in actions_states:
-            evaluation = self.alphaBeta(s,depth-1,alpha,beta)[0];
+            evaluation = self.alphaBeta(s,depth+1,maxDepth,alpha,beta,deadline)[0];
+            if(evaluation == None):
+                return None, None;
             if(evaluation > v):
                 best_action = a;
                 v = evaluation;         
@@ -905,7 +886,9 @@ class DummyAgent(CaptureAgent):
     else:
         v = 1000000000
         for a, s in actions_states:
-            evaluation = self.alphaBeta(s,depth-1,alpha,beta)[0];
+            evaluation = self.alphaBeta(s,depth+1,maxDepth,alpha,beta,deadline)[0];
+            if(evaluation == None):
+                return None, None;
             if(evaluation < v):
                 best_action = a;
                 v = evaluation;
@@ -913,6 +896,8 @@ class DummyAgent(CaptureAgent):
             beta = min(beta,v);
             if beta <= alpha:
                 break  # alpha prune
+
+    shared.transposition_table[(gameState,agentIndex)] = (best_action, v, depthRemaining);
     return v,best_action
 
 
