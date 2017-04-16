@@ -18,6 +18,7 @@ from util import *
 from game import *
 from copy import deepcopy
 import numpy as np
+from operator import itemgetter
 
 #global_distancer = None;
 
@@ -121,6 +122,76 @@ def extract_features(gameState):
     features['teamScared'] = teamScared;
 
     return features;
+
+def team_heuristic(gameState, red):
+    features = Counter();       
+    map_height = gameState.data.layout.height;
+
+    if(red):
+        my_idxs = gameState.getRedTeamIndices();        
+        enemy_idxs = gameState.getBlueTeamIndices();        
+        home_x = gameState.data.layout.width / 2 - 1;
+        enemy_food = gameState.getBlueFood().asList();
+        my_food = gameState.getRedFood().asList();
+        my_pills = gameState.getRedCapsules();
+        enemy_pills = gameState.getBlueCapsules();
+        
+    else:
+        my_idxs = gameState.getBlueTeamIndices();
+        enemy_idxs = gameState.getRedTeamIndices();
+        home_x = gameState.data.layout.width / 2;
+        my_food = gameState.getBlueFood().asList();
+        enemy_food = gameState.getRedFood().asList();
+        my_pills = gameState.getBlueCapsules();
+        enemy_pills = gameState.getRedCapsules();
+    
+    my_carrying = [gameState.getAgentState(i).numCarrying for i in my_idxs]
+    enemy_carrying = [gameState.getAgentState(i).numCarrying for i in enemy_idxs]
+
+    enemy_pos = [gameState.getAgentState(i).getPosition() for i in enemy_idxs];
+    my_pos = [gameState.getAgentState(i).getPosition() for i in my_idxs];
+
+    my_pac = [gameState.data.agentStates[i].isPacman for i in my_idxs];
+    enemy_pac = [gameState.data.agentStates[i].isPacman for i in enemy_idxs];
+
+    my_scared = gameState.getAgentState(my_idxs[0]).scaredTimer > 0;
+    enemy_scared = gameState.getAgentState(enemy_idxs[0]).scaredTimer > 0;
+
+    ma_ea_dists = np.array([[global_distancer.getDistance(i, j) for j in enemy_pos] for i in my_pos]);
+
+    ma_ef_dists = np.array([[global_distancer.getDistance(i, j) for j in enemy_food] for i in my_pos]);
+    ma_ep_dists = np.array([[global_distancer.getDistance(i, j) for j in enemy_pills] for i in my_pos]);
+
+    ea_mf_dists = np.array([[global_distancer.getDistance(i, j) for j in my_food] for i in enemy_pos]);
+    ea_mp_dists = np.array([[global_distancer.getDistance(i, j) for j in my_pills] for i in enemy_pos]);
+
+    my_dist_home = [9999,9999];
+    enemy_dist_home = [9999,9999];
+
+    for y in range(map_height):
+        hpos = (home_x, y);
+        if(gameState.hasWall(hpos[0],hpos[1])):
+            continue;
+
+        for i,pos in enumerate(my_pos):
+            if(my_pac[i]):
+                my_dist_home[i] = 0;
+            else:
+                my_dist_home[i] = min(my_dist_home[i], global_distancer.getDistance(pos,hpos));
+
+        for i,pos in enumerate(enemy_pos):
+            if(enemy_pac[i]):
+                enemy_dist_home[i] = 0;
+            else:
+                enemy_dist_home[i] = min(my_dist_home[i], global_distancer.getDistance(pos,hpos) + 1);
+
+
+
+    return -np.sum(np.min(ma_ef_dists,axis=1)) + 2*np.sum(my_carrying);
+
+def symmetric_heuristic(gameState, isRed):
+    return team_heuristic(gameState,isRed) - team_heuristic(gameState,not isRed);
+
 
 def shit_heuristic(next_actions_states):
     return next_actions_states[np.random.choice(len(next_actions_states))];
@@ -263,6 +334,9 @@ def minimax_heuristic_retard(s):
     # enemy 1
     weights['distToEnemy1'] = -1;
 
+    #for key, _ in weights.iteritems():
+    #    if(key in mod_features):
+    #        print(key,weights[key] * mod_features[key]);
 
     return weights * mod_features;
 
@@ -753,27 +827,23 @@ class DummyAgent(CaptureAgent):
 
     gameState.data.agentStates[self.enemy_idxs[0]] = e0_state;
     gameState.data.agentStates[self.enemy_idxs[1]] = e1_state;
-    gameState.data._agentMoved = my_index - 1 % gameState.getNumAgents(); 
+    gameState.data._agentMoved = (my_index - 1) % gameState.getNumAgents(); 
 
 
     #print(gameState)
     actions_states = [(a,gameState.generateSuccessor(my_index,a)) for a in actions]; 
 
-    
+    actions_rewards = [(a,symmetric_heuristic(s,self.red)) for a,s in actions_states];
 
+    #print(actions_rewards)
+
+    #my_action = max(actions_rewards,key=itemgetter(1))[0];
     #my_action = oracle.next_move(gameState);
-    my_action, _ = less_shit_heuristic(actions_states);
-
-    bestscore = -10000000
-    for action, state in actions_states:
-       alpha = -100000
-       beta = 100000
-       depth = 5
-       score = self.alphaBeta(state,depth,alpha,beta)
-       if score>bestscore:
-           bestscore = score;
-           my_action = action
-       #print ("score",score,"action",action);
+    #my_action, _ = less_shit_heuristic(actions_states);
+    
+    
+    my_action = self.alphaBetaStart(gameState,4);
+    #print(symmetric_heuristic(gameState,self.red))
 
     print my_action
 
@@ -786,46 +856,64 @@ class DummyAgent(CaptureAgent):
 
     return my_action;
 
+  def alphaBetaStart(self,gameState,depth):
+    actions = gameState.getLegalActions(self.index)
+    actions_states = [(a,gameState.generateSuccessor(self.index,a)) for a in actions]; 
+
+    bestscore = -10000000
+    for a, s in actions_states:
+       alpha = -1000000
+       beta =   1000000
+       score = self.alphaBeta(s,depth,alpha,beta)
+       print(a,score)
+       if score>bestscore:
+            bestscore = score;
+            my_action = a;
+
+   
+    return my_action;
+
   def alphaBeta(self, gameState, depth,alpha,beta):
     #alpha is the best choice for max, beta is the best choice for min
-    agentIndex = (gameState.data._agentMoved + 1) % 4;  
-
-    actionStates = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)]
-    if depth<=0:
-        return minimax_heuristic_0(gameState)
-
+    agentIndex = (gameState.data._agentMoved + 1) % 4; 
+    agentRed = gameState.isOnRedTeam(agentIndex);
+    
     if gameState.isOver() or gameState.data.timeleft == 0:#game over,terminal state
         finalScore = gameState.getScore()
         if self.red:
             return 100000*finalScore
         else:
             return -100000*finalScore
-    else:# game is not over!
-        # actionStates = [(a,gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)]
-        # score = less_shit_heuristic(actionStates)
-        if gameState.data._agentMoved in self.our_idxs:#if it is in our team, need to change the condition
-            best = -1000000000
-            for action,nextState in actionStates:
-                evaluation = self.alphaBeta(nextState,depth-1,alpha,beta)
-                #print('MyTeam Best: {} Eval: {}'.format(best,evaluation))
-                if eval>best:
-                    best = evaluation
-                if best > alpha:
-                    alpha = best
-                if beta <= alpha:
-                    break#beta prune
-        else:
-            best = 1000000000
-            for action, nextState in actionStates:
-                evaluation = self.alphaBeta(nextState, depth - 1, alpha, beta)
-                #print('Enemy Best: {} Eval: {}'.format(best, evaluation))
-                if eval < best:
-                    best = evaluation
-                if best < beta:
-                    beta = best
-                if beta <= alpha:
-                    break  # alpha prune
-        return best
+
+    if depth <= 0:
+        return symmetric_heuristic(gameState,self.red), None;
+
+    actions_states = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)]    
+
+
+    if(agentRed == self.red):
+        v = -1000000000
+        for a,s in actions_states:
+            evaluation = self.alphaBeta(s,depth-1,alpha,beta)[0];
+            if(evaluation > v):
+                best_action = a;
+                v = evaluation;         
+            #print('MyTeam Best: {} Eval: {}'.format(best,evaluation))
+            alpha = max(alpha,v);
+            if beta <= alpha:
+                break #beta prune
+    else:
+        v = 1000000000
+        for a, s in actions_states:
+            evaluation = self.alphaBeta(s,depth-1,alpha,beta)[0];
+            if(evaluation < v):
+                best_action = a;
+                v = evaluation;
+            #print('Enemy Best: {} Eval: {}'.format(best, evaluation))
+            beta = min(beta,v);
+            if beta <= alpha:
+                break  # alpha prune
+    return v,best_action
 
 
 
