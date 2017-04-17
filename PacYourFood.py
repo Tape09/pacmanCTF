@@ -25,10 +25,13 @@ from operator import itemgetter
 
 def fix_state(gameState):
     for i in gameState.getRedTeamIndices():
-        gameState.data.agentStates[i].isPacman = gameState.data.agentStates[i].getPosition() >= gameState.data.layout.width / 2;
+        gameState.data.agentStates[i].isPacman = gameState.data.agentStates[i].getPosition()[0] >= gameState.data.layout.width / 2;
+        gameState.data.agentStates[i].configuration.pos = (float(gameState.data.agentStates[i].configuration.pos[0]),float(gameState.data.agentStates[i].configuration.pos[1]))
 
     for i in gameState.getBlueTeamIndices():
-        gameState.data.agentStates[i].isPacman = gameState.data.agentStates[i].getPosition() < gameState.data.layout.width / 2;
+        gameState.data.agentStates[i].isPacman = gameState.data.agentStates[i].getPosition()[0] < gameState.data.layout.width / 2;
+        gameState.data.agentStates[i].configuration.pos = (float(gameState.data.agentStates[i].configuration.pos[0]),float(gameState.data.agentStates[i].configuration.pos[1]))
+        
 
 def checkEqualIvo(lst):
     return not lst or lst.count(lst[0]) == len(lst)
@@ -134,7 +137,7 @@ def extract_features(gameState):
 
     return features;
 
-def team_heuristic(gameState, red):
+def team_heuristic(gameState, red, verbose = False):
     features = Counter();       
     map_height = gameState.data.layout.height;
 
@@ -146,6 +149,9 @@ def team_heuristic(gameState, red):
         my_food = gameState.getRedFood().asList();
         my_pills = gameState.getRedCapsules();
         enemy_pills = gameState.getBlueCapsules();
+        my_food_left = len(gameState.getRedFood().asList());
+        enemy_food_left = len(gameState.getBlueFood().asList());
+        my_score = gameState.getScore();
         
     else:
         my_idxs = gameState.getBlueTeamIndices();
@@ -155,32 +161,53 @@ def team_heuristic(gameState, red):
         enemy_food = gameState.getRedFood().asList();
         my_pills = gameState.getBlueCapsules();
         enemy_pills = gameState.getRedCapsules();
+        my_food_left = len(gameState.getBlueFood().asList());
+        enemy_food_left = len(gameState.getRedFood().asList());
+        my_score = -gameState.getScore();
     
-    my_carrying = [gameState.getAgentState(i).numCarrying for i in my_idxs]
-    enemy_carrying = [gameState.getAgentState(i).numCarrying for i in enemy_idxs]
+    
+    
+
+    my_carrying = np.array([gameState.getAgentState(i).numCarrying for i in my_idxs]);
+    enemy_carrying = np.array([gameState.getAgentState(i).numCarrying for i in enemy_idxs]);
 
     enemy_pos = [gameState.getAgentState(i).getPosition() for i in enemy_idxs];
     my_pos = [gameState.getAgentState(i).getPosition() for i in my_idxs];
 
-    my_pac = [gameState.data.agentStates[i].isPacman for i in my_idxs];
-    enemy_pac = [gameState.data.agentStates[i].isPacman for i in enemy_idxs];
+    my_team_dist = global_distancer.getDistance(my_pos[0], my_pos[1])
 
-    my_scared = gameState.getAgentState(my_idxs[0]).scaredTimer > 0;
-    enemy_scared = gameState.getAgentState(enemy_idxs[0]).scaredTimer > 0;
+    my_pac = np.array([gameState.data.agentStates[i].isPacman for i in my_idxs]);
+    enemy_pac = np.array([gameState.data.agentStates[i].isPacman for i in enemy_idxs]);
 
-    ma_ea_dists = np.array([[global_distancer.getDistance(i, j) for j in enemy_pos] for i in my_pos]);
+    my_scared = gameState.getAgentState(my_idxs[0]).scaredTimer;
+    enemy_scared = gameState.getAgentState(enemy_idxs[0]).scaredTimer;
+
+    try:
+        ma_ea_dists = np.array([[global_distancer.getDistance(i, j) for j in enemy_pos] for i in my_pos]);
+    except:
+        ma_ea_dists = np.zeros(2,2);
 
     ma_ef_dists = np.array([[global_distancer.getDistance(i, j) for j in enemy_food] for i in my_pos]);
-    ma_ep_dists = np.array([[global_distancer.getDistance(i, j) for j in enemy_pills] for i in my_pos]);
+    #ma_ep_dists = np.array([[global_distancer.getDistance(i, j) for j in enemy_pills] for i in my_pos]);
 
-    ea_mf_dists = np.array([[global_distancer.getDistance(i, j) for j in my_food] for i in enemy_pos]);
-    ea_mp_dists = np.array([[global_distancer.getDistance(i, j) for j in my_pills] for i in enemy_pos]);
+    #ea_mf_dists = np.array([[global_distancer.getDistance(i, j) for j in my_food] for i in enemy_pos]);
+    #ea_mp_dists = np.array([[global_distancer.getDistance(i, j) for j in my_pills] for i in enemy_pos]);
 
-    my_dist_home = [9999,9999];
-    enemy_dist_home = [9999,9999];
+    my_dist_home = np.array([9999,9999]);
+    enemy_dist_home = np.array([9999,9999]);
 
     my_nearest_home = [0,0];    
     enemy_nearest_home = [0,0];    
+
+    my_nearest_enemy = np.min(ma_ea_dists,axis=1);
+
+    my_nearest_ghost = np.min(ma_ea_dists * np.logical_not(enemy_pac)  + enemy_pac * 9999,axis=1);
+    my_nearest_pac = np.min(ma_ea_dists * enemy_pac + np.logical_not(enemy_pac) * 9999,axis=1);
+    if(my_nearest_pac[0] == 9999):
+        my_nearest_pac[0] = 0.0;
+
+    if(my_nearest_pac[1] == 9999):
+        my_nearest_pac[1] = 0.0;
 
     for y in range(map_height):
         hpos = (home_x, y);
@@ -188,7 +215,7 @@ def team_heuristic(gameState, red):
             continue;
 
         for i,pos in enumerate(my_pos):
-            if(my_pac[i]):
+            if(not my_pac[i]):
                 my_dist_home[i] = 0;
             else:
                 dist = global_distancer.getDistance(pos,hpos);
@@ -196,20 +223,80 @@ def team_heuristic(gameState, red):
                     my_dist_home[i] = dist;
                     my_nearest_home = hpos;
 
-        for i,pos in enumerate(enemy_pos):
-            if(enemy_pac[i]):
-                enemy_dist_home[i] = 0;
-            else:
-                dist = global_distancer.getDistance(pos,hpos) + 1;
-                if(dist < enemy_dist_home[i]):
-                    enemy_dist_home[i] = dist;
-                    enemy_nearest_home = hpos;
+        #for i,pos in enumerate(enemy_pos):
+        #    if(not enemy_pac[i]):
+        #        enemy_dist_home[i] = 0;
+        #    else:
+        #        dist = global_distancer.getDistance(pos,hpos) + 1;
+        #        if(dist < enemy_dist_home[i]):
+        #            enemy_dist_home[i] = dist;
+        #            enemy_nearest_home = hpos;
+
+    
+    output = Counter();
+    output["nearest food"] = np.sum(shared.w_nearest_food * np.min(ma_ef_dists,axis=1));
+    output["carrying food"] = np.sum(shared.w_carrying * my_carrying);
+
+    #if(np.sum(my_carrying) > 0.1 * enemy_food_left):
+    output["return home"] = np.sum(shared.w_dist_home * (my_carrying * my_dist_home)**2);
+
+    output["enemy scared"] = enemy_scared * shared.w_enemy_scared;
+
+    output["team dist"] = shared.w_team_dist * my_team_dist;
+
+    if(enemy_scared > 0):
+        output["nearest enemy ghost"] = 1;
+    else:
+        output["nearest enemy ghost"] = np.sum((my_nearest_ghost == 1) * shared.w_1_nearest_ghost);
+        output["nearest enemy ghost"] += np.sum((my_nearest_ghost == 2) * shared.w_2_nearest_ghost);
+        #output["nearest enemy ghost"] = np.sum(shared.w_dist_nearest_ghost / (1.0 + (my_nearest_ghost**2)));
+
+    if(my_scared > 0):
+        output["enemy carry"] = 0
+        output["nearest enemy pac"] = np.sum(shared.w_dist_nearest_ghost / (1.0 + (my_nearest_pac**2)));        
+    else:
+        output["enemy carry"] = np.sum(shared.w_enemy_carry * np.max(ma_ea_dists * enemy_carrying,axis=1))
+        output["nearest enemy pac"] = shared.w_dist_nearest_pac * np.sum(my_nearest_pac);
+
+    output["n enemy pacs"] = shared.w_enemy_pacs * np.sum(enemy_pac);
+
+    output["score"] = shared.w_score * my_score;
+
+    if(verbose):
+        print(output);
+        print(my_dist_home)
+    return output.totalCount();
+
+class SharedMemory:
+    def __init__(self):
+        self.pill_time = 0;
+        self.red = False;
+        self.transposition_table = {};
+
+        self.w_nearest_food = -0.151;
+        self.w_carrying = 25.0;
+        self.w_dist_home = -0.15;
+        self.w_score = 500.0;
+        self.w_team_scared = -100.0;
+        self.w_enemy_scared = 100.0;
+        self.w_min_dist_to_enemies = 0.25;
+        self.w_dist_nearest_ghost = -12.0;
+        self.w_1_nearest_ghost = -75.0;
+        self.w_2_nearest_ghost = -45.0;
+        self.w_dist_nearest_pac = -0.1;
+        self.w_enemy_pacs = -1000.0;
+        self.w_dist_to_enemy = -1.0;
+        self.w_enemy_scared = 100.0;
+        self.w_enemy_carry = -0.05;
+        self.w_team_dist = 0.1;
+        #self.w_my_scared = -100.0;
+        
+shared = SharedMemory();
 
 
-    return -np.sum(np.min(ma_ef_dists,axis=1)) + 2*np.sum(my_carrying);
-
-def symmetric_heuristic(gameState, isRed):
-    return team_heuristic(gameState,isRed) - team_heuristic(gameState,not isRed);
+def symmetric_heuristic(gameState, isRed, verbose = False):
+    #return team_heuristic(gameState,isRed,verbose) - team_heuristic(gameState,not isRed, verbose);
+    return team_heuristic(gameState,isRed,verbose);
 
 
 def shit_heuristic(next_actions_states):
@@ -236,7 +323,7 @@ def less_shit_heuristic(next_actions_states):
 
         # enemy pac
         if(features['teamScared'] == 1):
-            weights['nearestEnemyPac'] = 10;      
+            weights['nearestEnemyPac'] = 10.0;      
         else:
             weights['nearestEnemyPac'] = -1;
 
@@ -255,7 +342,7 @@ def less_shit_heuristic(next_actions_states):
         weights['nEnemyPacs'] = -10000;
         
         if(features['enemyScared'] == 1):
-            weights['nearestEnemyGhost'] = 0;
+            weights['nearestEnemyGhost'] = 0.0;
         else:
             mod_features['nearestEnemyGhost'] = 1.0 / (1 + features['nearestEnemyGhost'] ** 2);
             weights['nearestEnemyGhost'] = -32;
@@ -265,7 +352,7 @@ def less_shit_heuristic(next_actions_states):
         weights['distToTeam'] = -1;
             
 
-        weights['score'] = 100;
+        weights['score'] = 100.0;
         weights['distHome'] = -0.005 * features['carryingFood'] ** 2;
         weights['enemyScared'] = 1000;
         weights['teamScared'] = -1000;
@@ -293,56 +380,6 @@ def less_shit_heuristic(next_actions_states):
 
     #print("");
     return (best_action,best_state);
-
-def minimax_heuristic_0(s):
-    weights = Counter();   
-    features = extract_features(s);
-    mod_features = deepcopy(features);
-
-    # carrying food weight
-    #mod_features['carryingFood'] = np.log(1 + features['carryingFood']);
-    weights['carryingFood'] = 1.5;
-
-    # nearest food
-    weights['nearestFoodDist'] = -0.156;
-
-    # enemy pac
-    if(features['teamScared'] == 1):
-        weights['nearestEnemyPac'] = 10;      
-    else:
-        weights['nearestEnemyPac'] = -0.5;
-
-    # enemy 0
-    weights['distToEnemy0'] = -1 * features['carryingFoodEnemy0']
-    mod_features['distHomeEnemy0'] = 1.0 / (1 + features['distHomeEnemy0']);
-    weights['distHomeEnemy0'] = features['carryingFoodEnemy0'] * -1;
-
-    # enemy 1
-    weights['distToEnemy1'] = -1 * features['carryingFoodEnemy1']
-    mod_features['distHomeEnemy1'] = 1.0 / (1 + features['distHomeEnemy1']);
-    weights['distHomeEnemy1'] = features['carryingFoodEnemy1'] * -1;
-   
-    weights['nEnemyPacs'] = -10000;
-        
-    if(features['enemyScared'] == 1):
-        weights['nearestEnemyGhost'] = 0;
-    else:
-        mod_features['nearestEnemyGhost'] = 1.0 / (1 + features['nearestEnemyGhost'] ** 2);
-        weights['nearestEnemyGhost'] = -32;
-
-
-    mod_features['distToTeam'] = 1.0 / (1 + mod_features['distToTeam']);
-    weights['distToTeam'] = -1;
-            
-
-    weights['score'] = 100;
-    weights['distHome'] = -0.005 * features['carryingFood'] ** 2;
-    weights['enemyScared'] = 1000;
-    weights['teamScared'] = -1000;
-
-    return weights * mod_features;
-
-
 
 
 
@@ -624,16 +661,7 @@ class EnemyTracker:
 
 tracker = EnemyTracker();
 
-class SharedMemory:
-    def __init__(self):
-        self.pill_time = 0;
-        self.red = False;
-        self.transposition_table = {};
 
-        self.w_nearest_food = 0.15;
-        self.w_carrying = 2.0;
-        
-shared = SharedMemory();
 
 #################
 # Team creation #
@@ -720,7 +748,9 @@ class DummyAgent(CaptureAgent):
 
     
     enemy0_pos = gameState.getInitialAgentPosition(self.enemy_idxs[0]);
+    enemy0_pos = (float(enemy0_pos[0]), float(enemy0_pos[1]))
     enemy1_pos = gameState.getInitialAgentPosition(self.enemy_idxs[1]);
+    enemy1_pos = (float(enemy1_pos[0]), float(enemy1_pos[1]))
     e0_config = Configuration(enemy0_pos,Directions.STOP);
     e1_config = Configuration(enemy1_pos,Directions.STOP);
     if(self.red):
@@ -758,10 +788,11 @@ class DummyAgent(CaptureAgent):
     You should change this in your own agent.
     '''
     t0 = time.time();
+    #deadline = t0 + 0.4;
     deadline = t0 + 0.99;
 
 
-    shared.pill_time = max(0, shared.pill_time - 2);
+    shared.pill_time = max(0, shared.pill_time - 1);
     #if(self.first and self.index == 0):        
     #    gameState.data._agentMoved = 3;
     self.first = False;
@@ -804,14 +835,33 @@ class DummyAgent(CaptureAgent):
 
     gameState.data._agentMoved = (my_index - 1) % gameState.getNumAgents();     
     
-    d = 3;
-    while time.time() < deadline:
+    my_action = np.random.choice(gameState.getLegalActions(self.index));
+
+    fail = True;
+    max_d = 99999999;
+    d = 1;
+    while time.time() < deadline and d <= max_d:
         _,action = self.alphaBeta(gameState,0,d,-10000000,10000000,deadline);     
         if(action != None):
             my_action = action;
+            fail=False;
         d += 1;
 
-    print my_action,d
+    #print fail;
+    
+    #print(shared.pill_time)
+    #print gameState;            
+    #print gameState.getAgentState(0);
+    #print gameState.getAgentState(1);
+    #print gameState.getAgentState(2);
+    #print gameState.getAgentState(3);
+    #print symmetric_heuristic(gameState,self.red,True)
+
+    if(my_action == Directions.STOP):
+        my_action = np.random.choice(gameState.getLegalActions(self.index));
+        while Actions.getSuccessor(my_pos,my_action) == enemy0_pos or Actions.getSuccessor(my_pos,my_action) == enemy1_pos:
+            my_action = np.random.choice(gameState.getLegalActions(self.index));
+
 
     if(Actions.getSuccessor(my_pos,my_action) == enemy0_pos):
         tracker.update_eaten_agent(gameState,self.enemy_idxs[0]);
@@ -821,7 +871,7 @@ class DummyAgent(CaptureAgent):
         shared.pill_time = 40;
 
     t1 = time.time();
-    print("time taken:", t1-t0);
+    #print("time taken:", t1-t0);
 
     return my_action;
 
@@ -854,6 +904,10 @@ class DummyAgent(CaptureAgent):
             actions_states = [(p_action, gameState.generateSuccessor(agentIndex, p_action))];
         else:
             actions_states = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)];
+
+            for a,s in actions_states:
+                fix_state(s);
+
             estimated_values = [np.random.uniform(-999999,-888888) if (s,nextAgentIndex) not in shared.transposition_table else shared.transposition_table[(s,nextAgentIndex)][1] for a,s in actions_states];            
             actions_states = [x for (y,x) in sorted(zip(estimated_values,actions_states))]
            
@@ -865,8 +919,21 @@ class DummyAgent(CaptureAgent):
         
             actions_states[0], actions_states[p_i] = actions_states[p_i], actions_states[0];        
     else:
+        try:
+            fix_state(gameState);
+            actions_states = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)];
 
-        actions_states = [(a, gameState.generateSuccessor(agentIndex, a)) for a in gameState.getLegalActions(agentIndex)];
+            for a,s in actions_states:
+                fix_state(s);
+        except:
+            #print gameState;            
+            #print gameState.getAgentState(0);
+            #print gameState.getAgentState(1);
+            #print gameState.getAgentState(2);
+            #print gameState.getAgentState(3);
+            return -10000000, Directions.STOP;
+
+        
         estimated_values = [np.random.uniform(-999999,-888888) if (s,nextAgentIndex) not in shared.transposition_table else shared.transposition_table[(s,nextAgentIndex)][1] for a,s in actions_states];            
         actions_states = [x for (y,x) in sorted(zip(estimated_values,actions_states))]
 
