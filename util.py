@@ -622,7 +622,6 @@ class TimeoutFunction:
         return result
 
 
-
 _ORIGINAL_STDOUT = None
 _ORIGINAL_STDERR = None
 _MUTED = False
@@ -650,4 +649,5 @@ def unmutePrint():
 
     sys.stdout = _ORIGINAL_STDOUT
     #sys.stderr = _ORIGINAL_STDERR
+
 

@@ -211,8 +211,10 @@ def team_heuristic(gameState, red, verbose = False):
     my_nearest_home = [0,0];    
     enemy_nearest_home = [0,0];    
 
-    my_nearest_enemy = np.min(ma_ea_dists,axis=1);
     my_dist_from_spawn = np.array([global_distancer.getDistance(gameState.getInitialAgentPosition(my_idxs[i]), my_pos[i]) for i in range(2)]);
+
+    my_nearest_enemy = np.min(ma_ea_dists,axis=1);
+
     my_nearest_ghost = np.min(ma_ea_dists * np.logical_not(enemy_pac)  + enemy_pac * 9999,axis=1);
     my_nearest_pac = np.min(ma_ea_dists * enemy_pac + np.logical_not(enemy_pac) * 9999,axis=1);
     if(my_nearest_pac[0] == 9999):
@@ -235,14 +237,14 @@ def team_heuristic(gameState, red, verbose = False):
                     my_dist_home[i] = dist;
                     my_nearest_home = hpos;
 
-        #for i,pos in enumerate(enemy_pos):
-        #    if(not enemy_pac[i]):
-        #        enemy_dist_home[i] = 0;
-        #    else:
-        #        dist = global_distancer.getDistance(pos,hpos) + 1;
-        #        if(dist < enemy_dist_home[i]):
-        #            enemy_dist_home[i] = dist;
-        #            enemy_nearest_home = hpos;
+        for i,pos in enumerate(enemy_pos):
+            if(not enemy_pac[i]):
+                enemy_dist_home[i] = 0;
+            else:
+                dist = global_distancer.getDistance(pos,hpos) + 1;
+                if(dist < enemy_dist_home[i]):
+                    enemy_dist_home[i] = dist;
+                    enemy_nearest_home = hpos;
 
     
     output = Counter();
@@ -258,7 +260,6 @@ def team_heuristic(gameState, red, verbose = False):
     
     if(enemy_scared > 0):
         output["nearest enemy ghost"] = 1.0;
-        output["return home"] = 0.0;
     else:
         output["nearest enemy ghost"] = np.sum(my_pac * (my_nearest_ghost <= 1.0) * shared.w_1_nearest_ghost);
         output["nearest enemy ghost"] += np.sum(my_pac * (my_nearest_ghost <= 2.0) * shared.w_2_nearest_ghost);
@@ -266,28 +267,21 @@ def team_heuristic(gameState, red, verbose = False):
 
     if(my_scared > 0):
         output["enemy carry"] = 0
-        #output["nearest enemy pac"] = np.sum(shared.w_dist_nearest_ghost / (1.0 + (1.0+my_nearest_pac**2)));   
-        output["nearest enemy ghost"] = np.sum((np.logical_not( my_pac)) * (my_nearest_pac <= 1.0) * shared.w_1_nearest_ghost);
-        output["nearest enemy ghost"] += np.sum(np.logical_not(my_pac) * (my_nearest_pac <= 2.0) * shared.w_2_nearest_ghost);     
+        output["nearest enemy pac"] = np.sum(shared.w_dist_nearest_ghost / (1.0 + (1.0+my_nearest_pac**2)));        
     else:
         dists = (ma_ea_dists < 35) * ma_ea_dists;
-        are_enemies_carrying = enemy_carrying > 0;
-        combined_dist_enemy = np.sum(ma_ea_dists,axis=0);
-        if(np.sum(are_enemies_carrying) == 2):
-            if(combined_dist_enemy[0] < combined_dist_enemy[1]):
-                output["enemy carry"] = combined_dist_enemy[0] * enemy_carrying[0] * shared.w_enemy_carry;
-            else:
-                output["enemy carry"] = combined_dist_enemy[1] * enemy_carrying[1] * shared.w_enemy_carry;
-        elif(np.sum(are_enemies_carrying) == 1):
-            output["enemy carry"] = np.sum(combined_dist_enemy * enemy_carrying * shared.w_enemy_carry);
+        output["enemy carry"] = np.sum(shared.w_enemy_carry * np.max(dists * enemy_carrying,axis=1));
         output["nearest enemy pac"] = shared.w_dist_nearest_pac * np.sum(my_nearest_pac);
+        #output["enemy dist home"] = np.sum((enemy_carrying > 0) * enemy_dist_home * shared.w_enemy_dist_home);
 
     output["n enemy pacs"] = shared.w_enemy_pacs * np.sum(enemy_pac);
     output["enemy pills"] = shared.w_enemy_pills * len(enemy_pills)
 
     output["score"] = shared.w_score * my_score;
-    output["my dist from spawn"] = np.sum(shared.w_my_dist_from_spawn * 1.0/(1.0+my_dist_from_spawn) * (my_dist_from_spawn < 5));
-    output["team dist"] = shared.w_team_dist * 1.0/(my_team_dist+0.01) * (my_team_dist < 5.0);
+
+    output["my dist from spawn"] = np.sum(shared.w_my_dist_from_spawn * 1.0/(1.0+my_dist_from_spawn) * my_dist_from_spawn < 5);
+
+
     if(verbose):
         print(output);
         print(enemy_pills)
@@ -300,23 +294,24 @@ class SharedMemory:
         self.transposition_table = {};
         self.w_nearest_food = -0.151;
         self.w_carrying = 35.0;
-        self.w_dist_home = -0.05;
-        self.w_score = 500.0;
+        self.w_dist_home = -0.15;
+        self.w_score = 200.0;
         self.w_team_scared = -100.0;
         self.w_enemy_scared = 100.0;
         self.w_min_dist_to_enemies = 0.25;
-        self.w_dist_nearest_ghost = -16.0;
+        self.w_dist_nearest_ghost = -12.0;
         self.w_1_nearest_ghost = -750.0;
         self.w_2_nearest_ghost = -450.0;
         self.w_dist_nearest_pac = -0.1;
-        self.w_enemy_pacs = -10000.0;
+        self.w_enemy_pacs = -200.0;
         self.w_dist_to_enemy = -1.0;
         self.w_enemy_scared = 100.0;
         self.w_enemy_carry = -0.05;
-        self.w_team_dist = -0.1;
+        self.w_team_dist = -0.3;
         self.w_enemy_pills = -10000.0;
+        self.w_enemy_dist_home = 0.01;
         self.w_my_dist_from_spawn = -10000;
-        #self.w_my_scared = -100.0;
+        self.w_enemy = -100.0;
 shared = SharedMemory();
 
 
@@ -872,11 +867,11 @@ class DummyAgent(CaptureAgent):
     
     my_action = np.random.choice(gameState.getLegalActions(self.index));
 
-    #print(gameState)
-    #print gameState.getAgentState(0);
-    #print gameState.getAgentState(1);
-    #print gameState.getAgentState(2);
-    #print gameState.getAgentState(3);
+    print(gameState)
+    print gameState.getAgentState(0);
+    print gameState.getAgentState(1);
+    print gameState.getAgentState(2);
+    print gameState.getAgentState(3);
     fail = True;
     max_d = 99999999;
     d = 1;
@@ -888,7 +883,7 @@ class DummyAgent(CaptureAgent):
             fail=False;
         d += 1;
 
-    print symmetric_heuristic(gameState,self.red,True)
+    #print symmetric_heuristic(gameState,self.red,True)
 
     #print fail;
     
